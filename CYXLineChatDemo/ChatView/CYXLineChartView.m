@@ -20,11 +20,13 @@ static CGRect myFrame; //坐标
 
 #define kZeroMarginLeft 40
 #define kZeroMarginRight 20
-@interface CYXLineChartView ()
+@interface CYXLineChartView ()<CAAnimationDelegate>
 /*指针*/
 @property (nonatomic,strong) CYXPointerView *pointerView;
 /*指针说明label*/
 @property (nonatomic,strong) UILabel *explainLabel;
+/*渐变 填充*/
+@property (nonatomic,strong) CAGradientLayer *gradientLayer;
 @end
 @implementation CYXLineChartView{
     /*当前月*/
@@ -67,6 +69,7 @@ static CGRect myFrame; //坐标
     [self drawXLineAndLabels];
     //画折线
     [self drawLine];
+    //[self drawGradient];
     [self addSubview:self.pointerView];
     [self addSubview:self.explainLabel];
 }
@@ -93,7 +96,7 @@ static CGRect myFrame; //坐标
         [path addLineToPoint:point];
         if (i == [self.yValues count]-1) {//刻度尺默认选择当前 日期
             self.pointerView.centerX =point.x;
-            self.pointerView.maxX = point.x-self.pointerView.width/2;
+            self.pointerView.maxX = point.x+self.pointerView.width/2;
         }
         [_pointList addObject:[NSValue valueWithCGPoint:point]];
     }
@@ -112,7 +115,7 @@ static CGRect myFrame; //坐标
     pathAnimation.fromValue = [NSNumber numberWithFloat:0.0f];
     pathAnimation.toValue = [NSNumber numberWithFloat:1.0f];
     pathAnimation.autoreverses = NO;
-    
+    pathAnimation.delegate = self;
     [layer addAnimation:pathAnimation forKey:@"lineLayerAnimation"];
     layer.strokeEnd = 1.0;
     [self.layer addSublayer:layer];
@@ -150,7 +153,7 @@ static CGRect myFrame; //坐标
     UIBezierPath *path = [UIBezierPath bezierPath];
     CGFloat  xUnitValue = 10;
     CGFloat  xTotalDistance = CGRectGetWidth(myFrame)-kZeroMarginLeft-kZeroMarginRight;
-    CGFloat  xUnitMargin = xUnitValue/_currentMonthTotalDays *xTotalDistance;
+    CGFloat  xUnitMargin = xUnitValue/(_currentMonthTotalDays-1) *xTotalDistance;
     
     NSInteger day = 1;
     CGFloat centerX;
@@ -158,7 +161,7 @@ static CGRect myFrame; //坐标
         if (i==xCount-2) {//倒数第二个刻度
             [path moveToPoint:CGPointMake(kZeroMarginLeft+xTotalDistance-xUnitMargin, CGRectGetHeight(myFrame)-kDrawMarginBottom)];
             [path addLineToPoint:CGPointMake(kZeroMarginLeft+xTotalDistance-xUnitMargin, CGRectGetHeight(myFrame)-kDrawMarginBottom+8)];
-            day = _currentMonthTotalDays-10+1;
+            day = _currentMonthTotalDays-10;
             centerX = kZeroMarginLeft+xTotalDistance-xUnitMargin;
         }else if (i==xCount-1){//倒数第一个刻度
             [path moveToPoint:CGPointMake(kZeroMarginLeft+xTotalDistance, CGRectGetHeight(myFrame)-kDrawMarginBottom)];
@@ -171,7 +174,7 @@ static CGRect myFrame; //坐标
             if (i==0) {
                 day = 1;
             }else{
-              day = day+xUnitValue*i-1;
+              day = day+xUnitValue*i;
             }
             centerX = kZeroMarginLeft+i*xUnitMargin;
         }
@@ -212,6 +215,36 @@ static CGRect myFrame; //坐标
     [self.layer addSublayer:layer];
     self.pointerView.frame = CGRectMake(0, kDrawMarginTop, 20, CGRectGetHeight(myFrame)-kDrawMarginTop-kDrawMarginBottom+10);
 }
+-(void)drawGradient{
+    CGFloat  xTotalDistance = CGRectGetWidth(myFrame)-kZeroMarginLeft-kZeroMarginRight;
+    CGFloat  xUnitMargin = xTotalDistance/(_currentMonthTotalDays-1);
+    //////m填充
+    UIBezierPath * gradientPath = [UIBezierPath bezierPath];
+    [gradientPath moveToPoint:CGPointMake(kZeroMarginLeft+0*xUnitMargin, CGRectGetHeight(myFrame)-kDrawMarginBottom)];//第一个点
+    /////
+    for (NSValue * value in _pointList) {
+        CGPoint point = [value CGPointValue];
+        [gradientPath addLineToPoint:point];
+        if (value == [_pointList lastObject]) {
+            //蒙版最后一个点
+            [gradientPath addLineToPoint:CGPointMake(point.x, CGRectGetHeight(myFrame)-kDrawMarginBottom)];
+        }
+    }
+    
+    CAShapeLayer *arc = [CAShapeLayer layer];
+    arc.path = gradientPath.CGPath;
+    
+    
+    self.gradientLayer.mask = arc;
+    self.gradientLayer.frame = self.bounds;
+    [self.layer addSublayer:self.gradientLayer];
+    [self bringSubviewToFront:self.pointerView];
+    [self bringSubviewToFront:self.explainLabel];
+}
+#pragma mark ---CAAnimationDelegate
+- (void)animationDidStop:(CAAnimation *)anim finished:(BOOL)flag{
+    [self drawGradient];
+}
 #pragma mark ---获取当前月份的总天数
 - (void)setCurrentDaysAndMoth
 {
@@ -236,24 +269,37 @@ static CGRect myFrame; //坐标
 -(void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event{
     //获取touch
     UITouch * touch = [touches anyObject];
+    CGPoint curretPoint = [touch locationInView:self];
+    [self dealWithLocationPoint:curretPoint];
+    
+}
+/*一根或者多根手指在view上移动，系统会自动调用view的下面方法（随着手指的移动，会持续调用该方法）*/
+-(void)touchesMoved:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event{
+    NSLog(@"手指移动");
+    //获取touch
+    UITouch * touch = [touches anyObject];
     //获取当前点
     CGPoint curretPoint = [touch locationInView:self];
-    NSLog(@"%f",curretPoint.x);
-    if (curretPoint.x<=self.pointerView.maxX+self.pointerView.width/2&&curretPoint.x>=self.pointerView.minX+self.pointerView.width/2) {
-        self.pointerView.centerX = curretPoint.x;
-    }else if (curretPoint.x<=self.pointerView.maxX+self.pointerView.width/2){
-        self.pointerView.left = self.pointerView.minX;
-    }else if (curretPoint.x>=self.pointerView.minX+self.pointerView.width/2){
-        self.pointerView.left = self.pointerView.maxX;
+    [self dealWithLocationPoint:curretPoint];
+}
+-(void)dealWithLocationPoint:(CGPoint )currentPoint{
+    NSLog(@"%f",currentPoint.x);
+    CGFloat  availableX = 0;
+    if (currentPoint.x<=self.pointerView.maxX-self.pointerView.width/2&&currentPoint.x>=self.pointerView.minX+self.pointerView.width/2) {
+        //self.pointerView.centerX = curretPoint.x;
+        availableX =currentPoint.x;
+    }else if (currentPoint.x>self.pointerView.maxX-self.pointerView.width/2){
+        //self.pointerView.left = self.pointerView.minX;
+        //availableX = self.pointerView.minX;
+        availableX = self.pointerView.maxX-self.pointerView.width/2;
+    }else if (currentPoint.x<self.pointerView.minX+self.pointerView.width/2){
+        //self.pointerView.left = self.pointerView.maxX;
+        //availableX = self.pointerView.maxX;
+        availableX = self.pointerView.minX+self.pointerView.width/2;
     }
-    [self changeExplainLabelWithCenterX:self.pointerView.centerX];
+    [self changeExplainLabelWithCenterX:availableX];
 }
 -(void)changeExplainLabelWithCenterX:(CGFloat)centerX{
-    if (centerX<CGRectGetWidth(myFrame)/2) {
-        self.explainLabel.left = centerX+7;
-    }else{
-        self.explainLabel.right = centerX-7;
-    }
     for (int i=0; i<[_pointList count]; i++) {
         NSValue * value =_pointList[i];
         CGPoint point = [value CGPointValue];
@@ -267,14 +313,22 @@ static CGRect myFrame; //坐标
             if (offsetxCurrent<=offsetxNext) {
                 NSLog(@"point:%f",point.x);
                 self.explainLabel.text = [NSString stringWithFormat:@"%@",self.yValues[i]];
+                self.pointerView.centerX = point.x;
             }else{
                 NSLog(@"point2:%f",point2.x);
                 self.explainLabel.text = [NSString stringWithFormat:@"%@",self.yValues[i-1]];
+                self.pointerView.centerX = point2.x;
             }
             break;
         }else if (point.x==centerX){
             self.explainLabel.text = [NSString stringWithFormat:@"%@",self.yValues[i]];
+            self.pointerView.centerX = point.x;
         }
+    }
+    if (centerX<CGRectGetWidth(myFrame)/2) {
+        self.explainLabel.left = self.pointerView.centerX+7;
+    }else{
+        self.explainLabel.right = self.pointerView.centerX-7;
     }
 }
 #pragma mark ---G
@@ -301,5 +355,14 @@ static CGRect myFrame; //坐标
         _explainLabel.textAlignment = NSTextAlignmentCenter;
     }
     return _explainLabel;
+}
+-(CAGradientLayer*)gradientLayer{
+    if(!_gradientLayer){
+        _gradientLayer = [CAGradientLayer layer];
+        _gradientLayer.colors = @[(__bridge id)[UIColor blueColor].CGColor,(__bridge id)[UIColor whiteColor].CGColor];
+        _gradientLayer.startPoint = CGPointMake(0, 0);
+        _gradientLayer.endPoint = CGPointMake(0, 1);
+    }
+    return _gradientLayer;
 }
 @end

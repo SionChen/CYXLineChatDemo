@@ -9,7 +9,7 @@
 #import <UIKit/UIKit.h>
 
 @interface CYXLineChartView : UIView
-
+/*y值列表*/
 @property (nonatomic,strong) NSArray *yValues;
 /*画线开始*/
 -(void)drawChartWithMaxYValue:(CGFloat)maxYValue;
